@@ -1,4 +1,4 @@
-name: Build Custom Godot iOS Editor
+name: Build Custom Godot iOS Engine
 on:
   workflow_dispatch:
 
@@ -19,20 +19,19 @@ jobs:
           python -m pip install scons
           brew install xcbeautify
 
-      - name: Compile Godot Editor for iOS
+      - name: Compile Godot Engine for iOS
         run: |
-          scons platform=ios target=template_debug generate_bundle=yes arch=arm64 tools=yes module_mono=no module_openxr=no module_webxr=no | xcbeautify
+          scons platform=ios target=template_debug generate_bundle=yes arch=arm64 dev_build=yes module_mono=no module_openxr=no module_webxr=no | xcbeautify
 
-           - name: Assemble IPA Bundle Framework
+      - name: Assemble IPA Bundle Framework
         run: |
           mkdir -p Payload
-          # Automatically finds whatever .app folder was built and moves it into the Payload directory
           cp -r bin/*.app Payload/GodotEditor.app
           zip -r CustomGodotEngine.ipa Payload/
- 
 
-      - name: Upload Finished Editor IPA
+      - name: Upload Finished Engine IPA
         uses: actions/upload-artifact@v4
         with:
-          name: godot-ios-editor
-          path: CustomGodotEditor.ipa
+          name: godot-ios-engine
+          path: CustomGodotEngine.ipa
+
