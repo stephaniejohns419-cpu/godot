@@ -1,0 +1,36 @@
+name: Build Custom Godot iOS Editor
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install scons
+          brew install xcbeautify
+
+      - name: Compile Godot Editor for iOS
+        run: |
+          scons platform=ios target=template_debug generate_bundle=yes arch=arm64 tools=yes module_mono=no module_openxr=no module_webxr=no | xcbeautify
+
+      - name: Assemble IPA Bundle Framework
+        run: |
+          mkdir -p Payload
+          cp -r bin/godot.ios.template_debug.arm64.app Payload/GodotEditor.app 2>/dev/null || cp -r bin/godot.ios.template_debug.app Payload/GodotEditor.app
+          zip -r CustomGodotEditor.ipa Payload/
+
+      - name: Upload Finished Editor IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-ios-editor
+          path: CustomGodotEditor.ipa
