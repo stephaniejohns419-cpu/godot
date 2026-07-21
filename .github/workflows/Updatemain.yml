@@ -1,0 +1,51 @@
+name: Godot Self-Patching iOS Editor Build
+
+on:
+  workflow_dispatch: # Allows manual trigger from your iPad browser
+
+jobs:
+  ios-editor-compile:
+    runs-on: macos-15
+    steps:
+      - name: Checkout Your Forked Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: master
+
+      - name: Force Select Xcode 16 Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SCons and Vulkan Engine Dependencies
+        run: |
+          python -m pip install scons
+          brew install vulkan-headers
+
+      - name: Patch Engine Sub-Process Architecture
+        run: |
+          echo "Injecting single-process thread bypass..."
+          # Uses standard macOS shell execution flags cleanly
+          find platform/ios -name "*.mm" -o -name "*.cpp" | xargs sed -i '' 's/OS::get_singleton()->create_process/(run_in_editor_thread_fallback)/g' || true
+          sed -i '' 's/bool subwindow_supported = true;/bool subwindow_supported = false;/g' platform/ios/display_server_ios.mm || true
+
+      - name: Compile Engine Backend & Mobile Touch UI
+        run: |
+          scons platform=ios target=editor arch=arm64 vsproj=no tests=no
+
+      - name: Package Framework into Valid IPA Bundle
+        run: |
+          mkdir -p payload/Godot.app
+          cp -r bin/godot.ios.editor.* payload/Godot.app/
+          zip -r Godot_iPad_Editor.ipa payload/
+
+      - name: Export Final Executable Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot-Native-iPad-Editor
+          path: Godot_iPad_Editor.ipa
