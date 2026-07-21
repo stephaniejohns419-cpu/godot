@@ -1,0 +1,51 @@
+name: Godot Self-Patching iOS Editor Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios-editor-compile:
+    runs-on: macos-15
+    steps:
+      - name: Checkout Your Forked Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: master
+
+      - name: Force Select Xcode 16 Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SCons and Vulkan Engine Dependencies
+        run: |
+          python -m pip install scons
+          brew install vulkan-headers
+
+      - name: Compile Patched Engine Backend & Mobile Touch UI
+        run: |
+          scons platform=ios target=editor arch=arm64 vsproj=no tests=no
+
+      # 🛠️ CORRECTED PACKAGING STEP
+      - name: Package Framework into Valid IPA Bundle
+        run: |
+          # 1. Create a clean Payload folder hierarchy (case-sensitive for iOS)
+          mkdir -p Payload/Godot.app
+          
+          # 2. Copy the compiled binary artifact structure into the app container
+          # SCons saves files directly under the project root's bin/ folder
+          cp -r bin/godot.ios.editor.arm64.framework/* Payload/Godot.app/
+          
+          # 3. Compress the Payload folder into the mandatory .ipa extension
+          zip -r Godot_iPad_Editor.ipa Payload/
+
+      - name: Export Final Executable Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot-Native-iPad-Editor
+          path: Godot_iPad_Editor.ipa
