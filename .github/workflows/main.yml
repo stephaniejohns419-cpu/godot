@@ -1,17 +1,23 @@
 name: Custom Native Godot iPad Compiler
 
 on:
-  workflow_dispatch: # Allows manual trigger from your iPad browser
+  workflow_dispatch:
 
 jobs:
   compile-ios-editor:
-    runs-on: macos-14 # Uses Apple Silicon M-series cloud runners for maximum speed
+    # FIX 1: Upgrade to macos-15 (Sequoia) which natively holds Xcode 16+ / Clang 16+
+    runs-on: macos-15 
     steps:
       - name: Checkout Master Repository
         uses: actions/checkout@v4
         with:
           repository: godotengine/godot
           ref: master
+
+      # FIX 2: Explicitly select the Xcode 16 environment on the runner
+      - name: Select Xcode Version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
 
       - name: Setup Python environment
         uses: actions/setup-python@v5
@@ -21,7 +27,7 @@ jobs:
       - name: Install SCons and Dependencies
         run: |
           python -m pip install scons
-          brew install vulkan-headers # Needed for high-end 3D rendering pipelines
+          brew install vulkan-headers
 
       - name: Compile Engine Backend & Mobile Touch UI
         run: |
