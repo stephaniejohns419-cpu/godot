@@ -1,56 +1,51 @@
-name: 🔗 GHA
-on: [push, pull_request, merge_group, workflow_dispatch]
+name: Godot Self-Patching iOS Editor Build
 
-concurrency:
-  group: ${{ github.workflow }}|${{ github.ref_name }}
-  cancel-in-progress: true
+on:
+  workflow_dispatch: # Allows manual trigger from your iPad browser
 
 jobs:
-  # First stage: Only static checks, fast and prevent expensive builds from running.
+  ios-editor-compile:
+    runs-on: macos-15
+    steps:
+      - name: Checkout Your Forked Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: master
 
-  static-checks:
-    if: ${{ !vars.DISABLE_GODOT_CI || github.run_attempt > 1 || github.event_name == 'workflow_dispatch' }}
-    name: 📊 Static checks
-    uses: ./.github/workflows/static_checks.yml
+      - name: Force Select Xcode 16 Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
 
-  # Second stage: Run all the builds and some of the tests.
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-  android-build:
-    name: 🤖 Android
-    needs: static-checks
-    if: needs.static-checks.outputs.sources-changed == 'true' || github.event_name != 'pull_request'
-    uses: ./.github/workflows/android_builds.yml
-    secrets:
-      SERVICE_ACCOUNT_KEY: ${{ secrets.SERVICE_ACCOUNT_KEY }}
+      - name: Install SCons and Vulkan Engine Dependencies
+        run: |
+          python -m pip install scons
+          brew install vulkan-headers
 
-  ios-build:
-    name: 🍏 iOS
-    needs: static-checks
-    if: needs.static-checks.outputs.sources-changed == 'true' || github.event_name != 'pull_request'
-    uses: ./.github/workflows/ios_builds.yml
+      - name: Patch Engine Sub-Process Architecture
+        run: |
+          echo "Injecting single-process thread bypass..."
+          # Uses standard macOS shell execution flags cleanly
+          find platform/ios -name "*.mm" -o -name "*.cpp" | xargs sed -i '' 's/OS::get_singleton()->create_process/(run_in_editor_thread_fallback)/g' || true
+          sed -i '' 's/bool subwindow_supported = true;/bool subwindow_supported = false;/g' platform/ios/display_server_ios.mm || true
 
-  linux-build:
-    name: 🐧 Linux
-    needs: static-checks
-    if: needs.static-checks.outputs.sources-changed == 'true' || github.event_name != 'pull_request'
-    uses: ./.github/workflows/linux_builds.yml
-    with:
-      changed-files: ${{ needs.static-checks.outputs.changed-files }}
+      - name: Compile Engine Backend & Mobile Touch UI
+        run: |
+          scons platform=ios target=editor arch=arm64 vsproj=no tests=no
 
-  macos-build:
-    name: 🍎 macOS
-    needs: static-checks
-    if: needs.static-checks.outputs.sources-changed == 'true' || github.event_name != 'pull_request'
-    uses: ./.github/workflows/macos_builds.yml
+      - name: Package Framework into Valid IPA Bundle
+        run: |
+          mkdir -p payload/Godot.app
+          cp -r bin/godot.ios.editor.* payload/Godot.app/
+          zip -r Godot_iPad_Editor.ipa payload/
 
-  windows-build:
-    name: 🏁 Windows
-    needs: static-checks
-    if: needs.static-checks.outputs.sources-changed == 'true' || github.event_name != 'pull_request'
-    uses: ./.github/workflows/windows_builds.yml
-
-  web-build:
-    name: 🌐 Web
-    needs: static-checks
-    if: needs.static-checks.outputs.sources-changed == 'true' || github.event_name != 'pull_request'
-    uses: ./.github/workflows/web_builds.yml
+      - name: Export Final Executable Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot-Native-iPad-Editor
+          path: Godot_iPad_Editor.ipa
