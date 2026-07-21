@@ -1,85 +1,53 @@
-name: 🛠️ Godot Self-Patching iOS Editor Build
+name: Godot Self-Patching iOS Editor Build
+
 on:
-  push:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger from your iPad browser
 
 jobs:
-  ios-editor-compile:
-    runs-on: macos-latest
-    
+  ios-editor-compile: # Key identifier matched to your runner setup
+    runs-on: macos-15
     steps:
-      - name: 📥 Checkout Repository Source
+      - name: Checkout Your Forked Repository
         uses: actions/checkout@v4
-
-      - name: 🐍 Set up Python Environment
-        uses: actions/actions-setup-python@v5
         with:
-          python-version: '3.x'
+          repository: ${{ github.repository }}
+          ref: master
 
-      - name: 📦 Install SCons & Toolchain Dependencies
+      - name: Force Select Xcode 16 Toolchain
         run: |
-          python -m pip install --upgrade pip
-          pip install scons
-          xcrun --show-sdk-path --sdk iphoneos
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
 
-      - name: 🛡️ Set up SCons Compile Cache
-        uses: actions/cache@v4
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5 # FIX 1: Removed the duplicated 'actions/' repo path prefix
         with:
-          path: ${{ github.workspace }}/.scons_cache/
-          key: ${{ runner.os }}-godot-autopatch-editor-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-godot-autopatch-editor-
+          python-version: '3.11'
 
-      - name: 🔧 Auto-Patch Platform Restrictions (Godot 3.x & 4.x)
+      - name: Install SCons and Vulkan Engine Dependencies
         run: |
-          python3 -c '
-          import os
+          python -m pip install scons
+          brew install vulkan-headers
 
-          # 1. Patch detect.py/config.py to fully allow tools/editor execution
-          for target_file in ["platform/ios/detect.py", "platform/ios/config.py"]:
-              if os.path.exists(target_file):
-                  with open(target_file, "r") as f:
-                      content = f.read()
-                  
-                  # Force clean the tool-disabling block logic
-                  content = content.replace("env[\"tools\"] = \"no\"", "# env[\"tools\"] = \"no\"")
-                  content = content.replace("if env[\"tools\"] == \"yes\":", "if False:")
-                  content = content.replace("if env[\"tools\"] == \"yes\" or env[\"target\"] == \"editor\":", "if False:")
-                  
-                  with open(target_file, "w") as f:
-                      f.write(content)
-                  print(f"Successfully patched validation locks in {target_file}")
-
-          # 2. Patch iOS Display Server to handle the Editor Viewport UI
-          ds_file = "platform/ios/display_server_ios.mm"
-          if os.path.exists(ds_file):
-              with open(ds_file, "r") as f:
-                  content = f.read()
-              content = content.replace("bool is_editor = false;", "bool is_editor = true;")
-              with open(ds_file, "w") as f:
-                  f.write(content)
-              print("Successfully initialized iOS Editor Viewport rendering pipeline.")
-          '
-
-      - name: 🏗️ Compile Custom Godot Engine Editor (arm64 Tools)
-        env:
-          SCONS_CACHE: ${{ github.workspace }}/.scons_cache/
+      - name: Patch Engine Sub-Process Architecture
         run: |
-          # The patched build platform now executes target=editor perfectly
-          scons platform=ios arch=arm64 target=editor tools=yes generate_bundle=yes production=yes vsproj=no
+          echo "Injecting single-process thread bypass..."
+          # FIX 2: Escaped correct variable pointers for POSIX sed formatting compatibility on macOS
+          find platform/ios -name "*.mm" -o -name "*.cpp" | xargs sed -i '' 's/OS::get_singleton()->create_process/(run_in_editor_thread_fallback)/g' || true
+          
+          # Disables the multi-window desktop manager flag for iOS platforms to enforce single-frame viewports
+          sed -i '' 's/bool subwindow_supported = true;/bool subwindow_supported = false;/g' platform/ios/display_server_ios.mm || true
 
-      - name: 📦 Pack into Installable Archive (.IPA)
+      - name: Compile Engine Backend & Mobile Touch UI
         run: |
-          cd bin/
-          mkdir Payload
-          # Aggressively catch whatever directory name SCons creates based on engine version
-          cp -r *.app Payload/ 2>/dev/null || cp -r godot.ios.editor.arm64/ Payload/ || true
-          zip -r godot-patched-editor.ipa Payload/
+          scons platform=ios target=editor arch=arm64 vsproj=no tests=no
 
-      - name: 📤 Upload Compiled iOS Editor Engine (.IPA)
+      - name: Package Framework into Valid IPA Bundle
+        run: |
+          mkdir -p payload/Godot.app
+          cp -r bin/godot.ios.editor.* payload/Godot.app/
+          zip -r Godot_iPad_Editor.ipa payload/
+
+      - name: Export Final Executable Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: godot-patched-editor-engine
-          path: bin/godot-patched-editor.ipa
-          if-no-files-found: error
+          name: Godot-Native-iPad-Editor
+          path: Godot_iPad_Editor.ipa
