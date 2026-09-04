@@ -1,4 +1,4 @@
-name: Compile Unrestricted Godot iOS Editor
+name: Compile Unrestricted Godot iOS Editor (ARM64 Darwin)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: '4.3-stable'
 
 jobs:
-  build-raw-editor:
+  build-darwin-ios:
     runs-on: macos-latest
     steps:
       - name: Checkout Engine Source
@@ -18,24 +18,28 @@ jobs:
           repository: godotengine/godot
           ref: ${{ github.event.inputs.godot_version }}
 
-      - name: Install Build Systems
+      - name: Setup iOS Toolchain and Build Systems
         run: |
+          # Install standard SCons configuration tools
           brew install scons python3
           pip3 install cachecontrol
-          # Fetch and provision MoltenVK components natively for modern Vulkan rendering
-          ./misc/scripts/install_vulkan_sdk_macos.sh || true
 
-      - name: Compile Unrestricted Tools Suite (Editor Target)
+          # Explicitly set the active Xcode path to pull structural iPhoneOS platforms
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          
+          # Verify iOS SDK presence natively on the runner
+          xcodebuild -showsdks
+
+      - name: Compile Tools Suite (ARM64 iOS Target)
         run: |
-          # platform=ios defaults to non-editor code unless target=editor or tools=yes is specified
-          # This forces Godot to include the full project manager and compiler runtime logic
-          scons platform=ios target=editor arch=arm64 generate_bundle=yes vsproj=no tools=yes
+          # Build specifically for physical iOS hardware (Darwin-arm64) with full desktop-tools enabled
+          scons platform=ios target=editor arch=arm64 tools=yes generate_bundle=yes vsproj=no -j$(sysctl -n hw.logicalcpu)
 
-      - name: Build Standard IPA Package
+      - name: Structure Unsigned Payload
         run: |
           mkdir -p build/Payload
           
-          # Find and copy the generated .app bundle layout containing the native executable
+          # Move compiled .app directory structure into layout
           if [ -d "bin/Godot.app" ]; then
             cp -R bin/Godot.app build/Payload/
           else
@@ -43,12 +47,12 @@ jobs:
           fi
           
           cd build
-          # Zip the structure to generate a vanilla unsigned ipa installer
-          zip -r ../Godot_Raw_Editor.ipa Payload/
+          # Final wrapper for TrollStore installation compatibility
+          zip -r ../Godot_Darwin_ARM64_Editor.ipa Payload/
 
-      - name: Upload Artifact
+      - name: Upload iOS Binary Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Godot_Full_iOS_Editor
-          path: Godot_Raw_Editor.ipa
+          name: Godot_Darwin_ARM64_Editor
+          path: Godot_Darwin_ARM64_Editor.ipa
           if-no-files-found: error
