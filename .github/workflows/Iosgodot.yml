@@ -1,0 +1,53 @@
+name: Build Unsigned Godot iOS Editor
+
+on:
+  workflow_dispatch:
+    inputs:
+      godot_version:
+        description: 'Godot git branch/tag (e.g. 4.3-stable, master)'
+        required: true
+        default: '4.3-stable'
+
+jobs:
+  build-ios-editor:
+    runs-on: macos-14
+    steps:
+      - name: Checkout Godot Engine
+        uses: actions/checkout@v4
+        with:
+          repository: 'godotengine/godot'
+          ref: ${{ github.event.inputs.godot_version }}
+          fetch-depth: 1
+
+      - name: Setup Python & Dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SCons
+        run: |
+          python -m pip install --upgrade pip
+          pip install scons
+
+      - name: Compile Godot Full Editor for iOS (ARM64)
+        run: |
+          scons platform=ios target=editor arch=arm64 dev_build=yes generate_bundle=yes -j4
+
+      - name: Package Payload and Inject Entitlements
+        run: |
+          mkdir -p Payload
+          # Move compiled .app bundle into standard iOS IPA payload
+          cp -r bin/godot.ios.editor.arm64.app Payload/GodotEditor.app || cp -r bin/*.app Payload/GodotEditor.app
+
+          # Inject debugging and root process-spawning flags into Info.plist
+          plutil -insert get-task-allow -bool YES Payload/GodotEditor.app/Info.plist || true
+          plutil -insert com.apple.private.security.no-sandbox -bool YES Payload/GodotEditor.app/Info.plist || true
+
+          # Create the final unsigned .ipa
+          zip -r Godot_iOS_Editor_Unsigned.ipa Payload
+
+      - name: Upload Unsigned Editor IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot-iOS-Editor-Unsigned
+          path: Godot_iOS_Editor_Unsigned.ipa
