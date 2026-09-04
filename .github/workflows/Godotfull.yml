@@ -1,0 +1,54 @@
+name: Compile Unrestricted Godot iOS Editor
+
+on:
+  workflow_dispatch:
+    inputs:
+      godot_version:
+        description: 'Godot Source Branch/Tag (e.g., 4.3-stable)'
+        required: true
+        default: '4.3-stable'
+
+jobs:
+  build-raw-editor:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Engine Source
+        uses: actions/checkout@v4
+        with:
+          repository: godotengine/godot
+          ref: ${{ github.event.inputs.godot_version }}
+
+      - name: Install Build Systems
+        run: |
+          brew install scons python3
+          pip3 install cachecontrol
+          # Fetch and provision MoltenVK components natively for modern Vulkan rendering
+          ./misc/scripts/install_vulkan_sdk_macos.sh || true
+
+      - name: Compile Unrestricted Tools Suite (Editor Target)
+        run: |
+          # platform=ios defaults to non-editor code unless target=editor or tools=yes is specified
+          # This forces Godot to include the full project manager and compiler runtime logic
+          scons platform=ios target=editor arch=arm64 generate_bundle=yes vsproj=no tools=yes
+
+      - name: Build Standard IPA Package
+        run: |
+          mkdir -p build/Payload
+          
+          # Find and copy the generated .app bundle layout containing the native executable
+          if [ -d "bin/Godot.app" ]; then
+            cp -R bin/Godot.app build/Payload/
+          else
+            cp -R bin/godot.ios.editor.arm64.axwrapper/Godot.app build/Payload/ || cp -R bin/*.app build/Payload/
+          fi
+          
+          cd build
+          # Zip the structure to generate a vanilla unsigned ipa installer
+          zip -r ../Godot_Raw_Editor.ipa Payload/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot_Full_iOS_Editor
+          path: Godot_Raw_Editor.ipa
+          if-no-files-found: error
