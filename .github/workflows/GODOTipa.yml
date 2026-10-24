@@ -1,0 +1,92 @@
+name: Build Godot iOS Editor (TrollStore / Jailbreak)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Set up Python and Scons
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install scons
+
+      - name: Compile Godot Engine for iOS (Editor Mode)
+        run: |
+          scons platform=ios target=editor ios_simulator=no arch=arm64 vsproj=no tests=no min_ios_version=14.0 -j$(sysctl -n hw.logicalcpu)
+
+      - name: Create App Bundle Structure
+        run: |
+          mkdir -p build/GodotEditor.app
+          
+          if [ -f bin/godot.ios.editor.arm64 ]; then
+            cp bin/godot.ios.editor.arm64 build/GodotEditor.app/GodotEditor
+          elif [ -f bin/godot.ios.tools.arm64 ]; then
+            cp bin/godot.ios.tools.arm64 build/GodotEditor.app/GodotEditor
+          elif [ -f bin/godot.ios.opt.tools.arm64 ]; then
+            cp bin/godot.ios.opt.tools.arm64 build/GodotEditor.app/GodotEditor
+          else
+            echo "Error: Could not locate compiled engine binary in bin/"
+            ls -la bin/
+            exit 1
+          fi
+          
+          cat <<EOF > build/GodotEditor.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
+              <key>CFBundleExecutable</key>
+              <string>GodotEditor</string>
+              <key>CFBundleIdentifier</key>
+              <string>org.godotengine.editor.ios</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>GodotEditor</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>4.x</string>
+              <key>CFBundleSignature</key>
+              <string>????</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Package Payload to IPA
+        run: |
+          mkdir -p ipa_out/Payload
+          cp -r build/GodotEditor.app ipa_out/Payload/
+          cd ipa_out
+          zip -r ../Godot_iOS_Editor_Unsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-ios-editor-ipa
+          path: Godot_iOS_Editor_Unsigned.ipa
