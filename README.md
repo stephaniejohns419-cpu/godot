@@ -16,22 +16,9 @@ Web-based platforms and [consoles](https://godotengine.org/consoles).
 Gobreak is completely free and open source under the very permissive [MIT license](https://godotengine.org/license).
 No strings attached, no royalties, nothing. The users' games are theirs, down
 to the last line of engine code. Godot's development is fully independent and
-community-driven, empowering users to help shape their engine to match their
-expectations. It is supported by the [Godot Foundation](https://godot.foundation/)
-not-for-profit
+community-driven.
 
-Official binaries for the original editor and the export templates can be found
-[on the Godot website](https://godotengine.org/download).
 
-### Compiling from source
-
-[See the official docs](https://docs.godotengine.org/en/latest/engine_details/development/compiling)
-for compilation instructions for every supported platform.
-
-## Community and contributing
-
-Gobreak is not only an engine but an ever-growing community of users and engine
-developers. The main community channels are listed [on the homepage](https://godotengine.org/community).
 
 
 
