@@ -1,0 +1,76 @@
+name: Build Unofficial Godot 4.3 iOS Editor IPA
+
+on:
+  workflow_dispatch: # Allows you to manually trigger the build via the GitHub UI
+
+jobs:
+  build-ios-editor:
+    runs-on: macos-latest # Updated to target the newest available macOS runner environment
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SCons Dependencies
+        run: |
+          python -m pip install scons
+
+      - name: Clone Official Godot 4.3 Source Code
+        run: |
+          git clone --depth 1 --branch 4.3-stable https://github.com
+
+      - name: Compile Godot 4.3 Engine using ARM64 Architecture
+        run: |
+          cd godot
+          # Target the desktop editor toolchain compiled directly for ARM64 architecture
+          scons platform=macos target=editor arch=arm64 precision=single vsproj=no -j$(sysctl -n hw.logicalcpu)
+
+      - name: Generate Xcode Project and Package into Unsigned IPA
+        run: |
+          cd godot
+          mkdir -p Payload/GodotEditor.app
+          
+          # Pull the compiled ARM64 binary from the macOS build directory
+          cp bin/godot.macos.editor.arm64 Payload/GodotEditor.app/GodotEditor
+          
+          # Inject clean bundle architecture keys so TrollStore recognizes it as an installable iOS binary
+          cat <<EOF > Payload/GodotEditor.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>GodotEditor</string>
+              <key>CFBundleIdentifier</key>
+              <string>org.godotengine.editor.unofficial</string>
+              <key>CFBundleName</key>
+              <string>Godot 4.3</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>4.3.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+          </dict>
+          </plist>
+          EOF
+          
+          # Compress the folder structure into the standard IPA format
+          zip -r ../Godot4.3_Editor.ipa Payload
+
+      - name: Upload Finished IPA as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot4.3-iOS-Editor
+          path: Godot4.3_Editor.ipa
