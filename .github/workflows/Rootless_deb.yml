@@ -1,0 +1,93 @@
+name: Build GoBreak Engine (Rootless DEB Package)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-deb:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python & SCons
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install scons
+          # Install dpkg via Homebrew to easily build Debian packages on macOS
+          brew install dpkg
+
+      - name: Compile GoBreak Engine
+        run: |
+          # Compiles Godot C++ source optimized for modern rootless environments (iOS 15.0+)
+          scons platform=ios target=template_release arch=arm64 generate_bundle=yes ios_min_version=15.0 -j$(sysctl -n hw.logicalcpu)
+
+      - name: Create Ad-Hoc Entitlements File
+        run: |
+          cat <<EOF > entitlements.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.cs.allow-jit</key>
+              <true/>
+              <key>com.apple.security.get-task-allow</key>
+              <true/>
+              <key>com.apple.private.security.no-sandbox</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Pseudo-Sign App Bundle
+        run: |
+          TARGET_APP=$(find bin/ -name "*.app" | head -n 1)
+          if [ -z "$TARGET_APP" ]; then
+            echo "Error: Compiled .app bundle not found!" && exit 1
+          fi
+          
+          echo "Signing $TARGET_APP with custom rootless entitlements..."
+          codesign --force --sign - --entitlements entitlements.plist "$TARGET_APP"
+
+      - name: Build Rootless Debian Package Structure
+        run: |
+          # 1. Create the rootless architecture staging layout
+          # In rootless jailbreaks, all files map to /var/jb/ as the root prefix
+          mkdir -p deb_stage/DEBIAN
+          mkdir -p deb_stage/var/jb/Applications
+          
+          # 2. Generate the Control file required by Sileo/Zebra
+          cat <<EOF > deb_stage/DEBIAN/control
+          Package: com.yourname.gobreak
+          Name: GoBreak Engine
+          Version: 1.0.0
+          Architecture: iphoneos-arm64
+          Description: A custom Godot engine fork optimized natively for rootless jailbroken iOS.
+          Maintainer: YourName <youremail@example.com>
+          Author: YourName
+          Section: Development
+          Depends: firmware (>= 15.0)
+          EOF
+
+          # 3. Copy the signed app bundle into the rootless applications container
+          TARGET_APP=$(find bin/ -name "*.app" | head -n 1)
+          cp -r "$TARGET_APP" deb_stage/var/jb/Applications/GoBreak.app
+
+      - name: Compile Staging Directory into DEB
+        run: |
+          # Packages your layout into a distribution-ready .deb package
+          dpkg-deb -Zxz --root-owner-group -b deb_stage com.yourname.gobreak_rootless.deb
+
+      - name: Upload Finished Engine DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoBreak-Rootless-DEB
+          path: com.yourname.gobreak_rootless.deb
+          retention-days: 7
