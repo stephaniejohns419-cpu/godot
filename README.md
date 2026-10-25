@@ -1,14 +1,9 @@
 # Gobreak Engine
 
-<p align="center">
-  <a href="https://godotengine.org">
-    <img src="misc/logo/logo_outlined.svg" width="400" alt="Godot Engine logo">
-  </a>
-</p>
 
 ## 2D and 3D cross-platform game engine for jailbroken ios
 
-**[Godot Engine](https://godotengine.org) is a feature-packed, jailbroken ios designed
+**[Gobreak engine](https://godotengine.org) is a feature-packed, jailbroken ios designed
 game engine to create 2D and 3D games from a unified interface.** It provides a
 comprehensive set of [common tools]  so that
 users can focus on making games without having to reinvent the wheel. Games can
